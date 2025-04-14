@@ -1,0 +1,28 @@
+name: expired_listing_finder
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  file_selector: ^1.0.3
+  path: ^1.9.1
+  cupertino_icons: ^1.0.2
+  google_fonts: ^6.2.1
+  desktop_drop: ^0.5.0
+  csv: ^6.0.0
+  file_saver: ^0.2.14
+  collection: ^1.19.1
+  fl_chart: ^0.70.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

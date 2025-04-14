@@ -204,6 +204,7 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
 
        final List<Map<String, dynamic>> yesData = processingResult['yesData'];
        final List<Map<String, dynamic>> maybeData = processingResult['maybeData'];
+       final List<Map<String, dynamic>> soldData = processingResult['soldData']; // <<< MODIFIED: Extract sold data
        final List<String> headers = processingResult['headers'];
        final String defaultFileNameBase = processingResult['fileNameBase'];
 
@@ -284,6 +285,7 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
                     builder: (_) => AnalysisScreen(
                       yesData: yesData,
                       maybeData: maybeData,
+                      soldData: soldData, // <<< MODIFIED: Pass sold data
                       headers: headers,
                     ),
                 ),

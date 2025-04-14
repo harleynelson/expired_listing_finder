@@ -1,11 +1,15 @@
+// file: lib/screens/analysis_screen.dart
+// path: lib/screens/analysis_screen.dart
+// approximate line: 1 (Posting entire file due to multiple changes)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'dart:math'; // For min/max/pow
 import 'package:collection/collection.dart'; // For median, grouping, etc.
 import 'package:fl_chart/fl_chart.dart'; // Import fl_chart
+import 'package:intl/intl.dart'; // For better number formatting (optional but recommended)
 
-// --- Helper Functions for Analysis (parseDouble, parseInt, calculateNumericStats, etc. - Unchanged) ---
+// --- Helper Functions for Analysis (parseDouble, parseInt - Unchanged) ---
 double? _parseDouble(dynamic value) {
   if (value == null) return null;
   // Remove common currency symbols, commas, and whitespace
@@ -21,14 +25,57 @@ int? _parseInt(dynamic value) {
    if (cleanedString.isEmpty) return null;
   return int.tryParse(cleanedString);
 }
-Map<String, String> _calculateNumericStats(List<Map<String, dynamic>> data, String key) {
+
+// --- MODIFIED Helper Functions for Calculating Stats (Now return richer info) ---
+
+// Stores stats for a numeric column
+class NumericStats {
+  final int count;
+  final double? average;
+  final double? median;
+  final double? minVal;
+  final double? maxVal;
+  final String key; // Store the key for formatting purposes
+
+  NumericStats({
+    required this.count,
+    this.average,
+    this.median,
+    this.minVal,
+    this.maxVal,
+    required this.key,
+  });
+
+  // Factory to create an empty/NA state
+  factory NumericStats.empty(String key) {
+    return NumericStats(count: 0, key: key);
+  }
+
+  // Helper to format values based on the key
+  String format(double? value) {
+    if (value == null) return 'N/A';
+    final keyLower = key.toLowerCase();
+    if (keyLower.contains('price')) return NumberFormat.currency(symbol: '\$', decimalDigits: 0).format(value);
+    if (keyLower.contains('sqft') || keyLower == 'dom' || keyLower.contains('year')) return NumberFormat.decimalPattern().format(value);
+    return value.toStringAsFixed(2); // Default
+  }
+
+  // Convenience getters for formatted stats
+  String get formattedCount => NumberFormat.decimalPattern().format(count);
+  String get formattedAverage => format(average);
+  String get formattedMedian => format(median);
+  String get formattedMin => format(minVal);
+  String get formattedMax => format(maxVal);
+}
+
+NumericStats _calculateNumericStats(List<Map<String, dynamic>> data, String key) {
   final values = data
       .map((row) => _parseDouble(row[key])) // Use helper to parse
       .whereNotNull() // Filter out nulls (failed parses or missing data)
       .toList();
 
   if (values.isEmpty) {
-    return { 'Count': '0', 'Average': 'N/A', 'Median': 'N/A', 'Min': 'N/A', 'Max': 'N/A', };
+    return NumericStats.empty(key);
   }
 
   values.sort();
@@ -40,25 +87,50 @@ Map<String, String> _calculateNumericStats(List<Map<String, dynamic>> data, Stri
   final double minVal = values.first;
   final double maxVal = values.last;
 
-  // Formatting (adjust precision as needed)
-  String formatValue(double v) {
-     // Basic formatting, consider intl package for better currency/number formatting
-     if (key.toLowerCase().contains('price')) { return '\$${v.toStringAsFixed(0)}'; } // No decimals for price
-     else if (key.toLowerCase().contains('sqft')) { return v.toStringAsFixed(0); } // No decimals for sqft
-     else if (key.toLowerCase() == 'dom') { return v.toStringAsFixed(0); } // DOM as integer
-     else if (key.toLowerCase().contains('year')) { return v.toStringAsFixed(0); } // Year as integer
-     return v.toStringAsFixed(2); // Default to 2 decimals
+  return NumericStats(
+    key: key,
+    count: values.length,
+    average: average,
+    median: median,
+    minVal: minVal,
+    maxVal: maxVal,
+  );
+}
+
+// Stores stats for Price/Sqft
+class PricePerSqftStats {
+  final int count;
+  final double? average;
+  final double? median;
+  final double? minVal;
+  final double? maxVal;
+
+  PricePerSqftStats({
+    required this.count,
+    this.average,
+    this.median,
+    this.minVal,
+    this.maxVal,
+  });
+
+  factory PricePerSqftStats.empty() {
+    return PricePerSqftStats(count: 0);
   }
 
-  return {
-    'Count': values.length.toString(),
-    'Average': formatValue(average),
-    'Median': formatValue(median),
-    'Min': formatValue(minVal),
-    'Max': formatValue(maxVal),
-  };
+  String format(double? value) {
+    if (value == null) return 'N/A';
+    return NumberFormat.currency(symbol: '\$', decimalDigits: 2).format(value); // Price/sqft often has decimals
+  }
+
+  String get formattedCount => NumberFormat.decimalPattern().format(count);
+  String get formattedAverage => format(average);
+  String get formattedMedian => format(median);
+  String get formattedMin => format(minVal);
+  String get formattedMax => format(maxVal);
 }
-Map<String, String> _calculatePricePerSqftStats(List<Map<String, dynamic>> data, String priceKey, String sqftKey) {
+
+
+PricePerSqftStats _calculatePricePerSqftStats(List<Map<String, dynamic>> data, String priceKey, String sqftKey) {
    final priceSqftValues = <double>[];
    int validPairCount = 0;
    for (final row in data) {
@@ -70,7 +142,7 @@ Map<String, String> _calculatePricePerSqftStats(List<Map<String, dynamic>> data,
       }
    }
    if (priceSqftValues.isEmpty) {
-    return { 'Count': '0', 'Average': 'N/A', 'Median': 'N/A', 'Min': 'N/A', 'Max': 'N/A', };
+    return PricePerSqftStats.empty();
    }
   priceSqftValues.sort();
   final double sum = priceSqftValues.sum;
@@ -80,15 +152,16 @@ Map<String, String> _calculatePricePerSqftStats(List<Map<String, dynamic>> data,
       : (priceSqftValues[priceSqftValues.length ~/ 2 - 1] + priceSqftValues[priceSqftValues.length ~/ 2]) / 2.0;
   final double minVal = priceSqftValues.first;
   final double maxVal = priceSqftValues.last;
-   String formatValue(double v) => '\$${v.toStringAsFixed(2)}'; // Price per sqft usually has decimals
-  return {
-    'Count': validPairCount.toString(), // Count of valid pairs used
-    'Average': formatValue(average),
-    'Median': formatValue(median),
-    'Min': formatValue(minVal),
-    'Max': formatValue(maxVal),
-  };
+
+  return PricePerSqftStats(
+    count: validPairCount, // Count of valid pairs used
+    average: average,
+    median: median,
+    minVal: minVal,
+    maxVal: maxVal,
+  );
 }
+
 Map<String, int> _calculateDistribution(List<Map<String, dynamic>> data, String key) {
   final counts = <String, int>{};
   int nullOrEmptyCount = 0;
@@ -110,13 +183,13 @@ Map<String, int> _calculateDistribution(List<Map<String, dynamic>> data, String 
   return sortedCounts;
 }
 
-// --- Helper Functions for Chart Data Preparation ---
 
-// Prepares data for a bar chart showing average numeric value per category.
+// --- Helper Functions for Chart Data Preparation (Unchanged) ---
 Map<String, double> _prepareAverageByCategoryData(
     List<Map<String, dynamic>> data,
     String categoryKey,
     String numericKey) {
+  // ... (implementation unchanged)
   final groupedData = groupBy(data, (Map row) => row[categoryKey]?.toString().trim() ?? '');
 
   final averageData = <String, double>{};
@@ -137,12 +210,11 @@ Map<String, double> _prepareAverageByCategoryData(
   final sortedEntries = averageData.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
   return Map.fromEntries(sortedEntries);
 }
-
-// Prepares data for a scatter plot. Returns list of (x, y) pairs.
 List<FlSpot> _prepareScatterData(
     List<Map<String, dynamic>> data,
     String xKey,
     String yKey) {
+  // ... (implementation unchanged)
   final spots = <FlSpot>[];
   for (final row in data) {
     final xVal = _parseDouble(row[xKey]);
@@ -159,12 +231,14 @@ List<FlSpot> _prepareScatterData(
 class AnalysisScreen extends StatefulWidget {
   final List<Map<String, dynamic>> yesData;
   final List<Map<String, dynamic>> maybeData;
+  final List<Map<String, dynamic>> soldData; // <<< MODIFIED: Added soldData
   final List<String> headers;
 
   const AnalysisScreen({
     super.key,
     required this.yesData,
     required this.maybeData,
+    required this.soldData, // <<< MODIFIED: Added soldData
     required this.headers,
   });
 
@@ -183,12 +257,49 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
   bool _maybeSortAscending = true;
   late List<Map<String, dynamic>> _sortedMaybeData;
 
+  // <<< MODIFIED: Pre-calculate Sold stats in initState for efficiency >>>
+  NumericStats? _soldPriceStats;
+  NumericStats? _soldSqftStats;
+  NumericStats? _soldDomStats;
+  PricePerSqftStats? _soldPricePerSqftStats;
+  NumericStats? _soldYearStats;
+  Map<String, int>? _soldBedDistribution;
+  Map<String, int>? _soldBathDistribution;
+  Map<String, int>? _soldCityDistribution;
+  Map<String, int>? _soldStyleDistribution;
+
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _sortedYesData = List.from(widget.yesData);
     _sortedMaybeData = List.from(widget.maybeData);
+
+    // --- Calculate Sold Stats Once ---
+    final bool hasPrice = widget.headers.contains('Price');
+    final bool hasSqft = widget.headers.contains('Total Finished Sqft');
+    final bool hasDOM = widget.headers.contains('DOM');
+    final bool hasBeds = widget.headers.contains('Bedrooms');
+    final bool hasBaths = widget.headers.contains('Baths Total');
+    final bool hasYear = widget.headers.contains('Year Built');
+    final bool hasCity = widget.headers.contains('City');
+    final bool hasStyle = widget.headers.contains('Style');
+
+    if(widget.soldData.isNotEmpty) {
+        _soldPriceStats = hasPrice ? _calculateNumericStats(widget.soldData, 'Price') : null;
+        _soldSqftStats = hasSqft ? _calculateNumericStats(widget.soldData, 'Total Finished Sqft') : null;
+        _soldDomStats = hasDOM ? _calculateNumericStats(widget.soldData, 'DOM') : null;
+        _soldPricePerSqftStats = (hasPrice && hasSqft) ? _calculatePricePerSqftStats(widget.soldData, 'Price', 'Total Finished Sqft') : null;
+        _soldYearStats = hasYear ? _calculateNumericStats(widget.soldData, 'Year Built') : null;
+        _soldBedDistribution = hasBeds ? _calculateDistribution(widget.soldData, 'Bedrooms') : null;
+        _soldBathDistribution = hasBaths ? _calculateDistribution(widget.soldData, 'Baths Total') : null;
+        _soldCityDistribution = hasCity ? _calculateDistribution(widget.soldData, 'City') : null;
+        _soldStyleDistribution = hasStyle ? _calculateDistribution(widget.soldData, 'Style') : null;
+    }
+    // --- End Calculate Sold Stats ---
+
+
     _yesSortColumnIndex = widget.headers.indexOf('Potential');
     _maybeSortColumnIndex = widget.headers.indexOf('Potential');
     if (_yesSortColumnIndex < 0) _yesSortColumnIndex = 0; // Default if not found
@@ -206,6 +317,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
 
   // Sorting Logic (unchanged)
   void _sortData(List<Map<String, dynamic>> dataToSort, int columnIndex, bool ascending) {
+    // ... (implementation unchanged)
     if (columnIndex < 0 || columnIndex >= widget.headers.length) return;
     final String sortKey = widget.headers[columnIndex];
     dataToSort.sort((a, b) {
@@ -221,7 +333,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
     });
   }
 
-  // --- Build Method ---
+  // --- Build Method (Unchanged Structure) ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -235,16 +347,35 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
       ),
       body: TabBarView( controller: _tabController, children: [
           // YES Tab
-          _buildAnalysisTab( context: context, data: _sortedYesData, title: "Yes Potential Properties", sortColumnIndex: _yesSortColumnIndex, sortAscending: _yesSortAscending,
-              onSort: (ci, asc) => setState(() { _yesSortColumnIndex = ci; _yesSortAscending = asc; _sortData(_sortedYesData, ci, asc); }) ),
+          _buildAnalysisTab(
+            context: context,
+            data: _sortedYesData, // Use sorted data
+            title: "Yes Potential Properties",
+            sortColumnIndex: _yesSortColumnIndex,
+            sortAscending: _yesSortAscending,
+            onSort: (ci, asc) => setState(() {
+              _yesSortColumnIndex = ci;
+              _yesSortAscending = asc;
+              _sortData(_sortedYesData, ci, asc); // Sort the correct list
+            })
+          ),
           // MAYBE Tab
-          _buildAnalysisTab( context: context, data: _sortedMaybeData, title: "Maybe Potential Properties", sortColumnIndex: _maybeSortColumnIndex, sortAscending: _maybeSortAscending,
-              onSort: (ci, asc) => setState(() { _maybeSortColumnIndex = ci; _maybeSortAscending = asc; _sortData(_sortedMaybeData, ci, asc); }) ),
+          _buildAnalysisTab(
+            context: context,
+            data: _sortedMaybeData, // <<< CORRECTED: Use sorted data for display
+            title: "Maybe Potential Properties",
+            sortColumnIndex: _maybeSortColumnIndex,
+            sortAscending: _maybeSortAscending,
+            onSort: (ci, asc) => setState(() {
+              _maybeSortColumnIndex = ci;
+              _maybeSortAscending = asc;
+              _sortData(_sortedMaybeData, ci, asc); // <<< CORRECTED: Sort the correct list
+            })
+           ),
         ],
       ),
     );
   }
-
   // Helper widget to build the content for each tab
   Widget _buildAnalysisTab({
       required BuildContext context,
@@ -258,7 +389,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
       return Center(child: Text('No data available for "$title".'));
     }
 
-    // --- Check for required headers ---
+    // --- Check for required headers (unchanged) ---
     final bool hasPrice = widget.headers.contains('Price');
     final bool hasSqft = widget.headers.contains('Total Finished Sqft');
     final bool hasDOM = widget.headers.contains('DOM');
@@ -268,7 +399,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
     final bool hasCity = widget.headers.contains('City');
     final bool hasStyle = widget.headers.contains('Style');
 
-    // --- Calculate Analysis Metrics (unchanged) ---
+    // --- Calculate Analysis Metrics for the CURRENT Tab (Yes/Maybe) ---
     final priceStats = hasPrice ? _calculateNumericStats(data, 'Price') : null;
     final sqftStats = hasSqft ? _calculateNumericStats(data, 'Total Finished Sqft') : null;
     final domStats = hasDOM ? _calculateNumericStats(data, 'DOM') : null;
@@ -279,13 +410,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
     final cityDistribution = hasCity ? _calculateDistribution(data, 'City') : null;
     final styleDistribution = hasStyle ? _calculateDistribution(data, 'Style') : null;
 
-    // --- Prepare Chart Data ---
+    // --- Prepare Chart Data (Unchanged - Uses Yes/Maybe Data) ---
     final Map<String, double> avgPriceByCityData = (hasPrice && hasCity)
         ? _prepareAverageByCategoryData(data, 'City', 'Price')
         : {};
     final List<FlSpot> priceVsSqftData = (hasPrice && hasSqft)
         ? _prepareScatterData(data, 'Total Finished Sqft', 'Price')
         : [];
+
+    // --- Define Sold Stat Text Style ---
+    const soldTextStyle = TextStyle(color: Colors.green, fontWeight: FontWeight.bold);
+
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -297,45 +432,40 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
           Text('Total Properties: ${data.length}'),
           const Divider(height: 30),
 
-          // --- Aggregate Analysis Section (unchanged) ---
+          // --- MODIFIED: Aggregate Analysis Section ---
           Text('Aggregate Analysis:', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 15),
           Wrap( spacing: 16.0, runSpacing: 16.0, children: [
-              if (priceStats != null) _buildStatsCard(context, 'Price Analysis', priceStats),
-              if (sqftStats != null) _buildStatsCard(context, 'Size Analysis (Sqft)', sqftStats, valueSuffix: ' sqft'),
-              if (domStats != null) _buildStatsCard(context, 'Days on Market (DOM)', domStats, valueSuffix: ' days'),
-              if (pricePerSqftStats != null) _buildStatsCard(context, 'Price per Sqft', pricePerSqftStats),
-              if (yearStats != null) _buildStatsCard(context, 'Year Built', yearStats, skipFormatting: true),
-              if (bedDistribution != null) _buildDistributionCard(context, 'Bedroom Distribution', bedDistribution),
-              if (bathDistribution != null) _buildDistributionCard(context, 'Bathroom Distribution', bathDistribution),
-              if (cityDistribution != null) _buildDistributionCard(context, 'City Distribution', cityDistribution),
-              if (styleDistribution != null) _buildDistributionCard(context, 'Style Distribution', styleDistribution),
+              // Pass both current tab's stats and pre-calculated sold stats to the cards
+              if (priceStats != null) _buildStatsCard(context, 'Price Analysis', priceStats, _soldPriceStats, soldTextStyle: soldTextStyle),
+              if (sqftStats != null) _buildStatsCard(context, 'Size Analysis (Sqft)', sqftStats, _soldSqftStats, valueSuffix: ' sqft', soldTextStyle: soldTextStyle),
+              if (domStats != null) _buildStatsCard(context, 'Days on Market (DOM)', domStats, _soldDomStats, valueSuffix: ' days', soldTextStyle: soldTextStyle),
+              if (pricePerSqftStats != null) _buildPricePerSqftCard(context, 'Price per Sqft', pricePerSqftStats, _soldPricePerSqftStats, soldTextStyle: soldTextStyle),
+              if (yearStats != null) _buildStatsCard(context, 'Year Built', yearStats, _soldYearStats, skipFormatting: true, soldTextStyle: soldTextStyle),
+              if (bedDistribution != null) _buildDistributionCard(context, 'Bedroom Distribution', bedDistribution, _soldBedDistribution, soldTextStyle: soldTextStyle),
+              if (bathDistribution != null) _buildDistributionCard(context, 'Bathroom Distribution', bathDistribution, _soldBathDistribution, soldTextStyle: soldTextStyle),
+              if (cityDistribution != null) _buildDistributionCard(context, 'City Distribution', cityDistribution, _soldCityDistribution, soldTextStyle: soldTextStyle),
+              if (styleDistribution != null) _buildDistributionCard(context, 'Style Distribution', styleDistribution, _soldStyleDistribution, soldTextStyle: soldTextStyle),
             ],
           ),
           const SizedBox(height: 10),
 
-          // --- Charts Section ---
+          // --- Charts Section (Unchanged) ---
           const Divider(height: 30),
           Text('Charts:', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 15),
-          // Conditionally display charts
           if (avgPriceByCityData.isNotEmpty)
             _buildAvgPriceByCityChart(context, avgPriceByCityData)
           else if (hasPrice && hasCity)
              const Text('Insufficient data for Average Price by City chart.', style: TextStyle(fontStyle: FontStyle.italic)),
-
-          const SizedBox(height: 20), // Space between charts
-
+          const SizedBox(height: 20),
           if (priceVsSqftData.isNotEmpty)
              _buildPriceVsSqftChart(context, priceVsSqftData)
           else if (hasPrice && hasSqft)
              const Text('Insufficient data for Price vs. SqFt chart.', style: TextStyle(fontStyle: FontStyle.italic)),
-
-          // TODO: Add dynamic chart generation UI here later
-
           const Divider(height: 30),
 
-          // --- Data Table Section ---
+          // --- Data Table Section (Unchanged) ---
           Text('Data Preview:', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 10),
           _buildDataTable( context: context, data: data, sortColumnIndex: sortColumnIndex, sortAscending: sortAscending, onSort: onSort, ),
@@ -344,37 +474,248 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
     );
   }
 
-  // --- Helper Widgets for Displaying Analysis (unchanged) ---
-  Widget _buildStatsCard(BuildContext context, String title, Map<String, String> stats, {String valueSuffix = '', bool skipFormatting = false}) {
-    final textTheme = Theme.of(context).textTheme;
-    final List<Widget> statWidgets = [];
-    stats.forEach((key, value) {
-      final displayValue = (skipFormatting && (key == 'Average' || key == 'Median'))
-                           ? double.tryParse(value)?.toStringAsFixed(0) ?? value
-                           : value;
-      statWidgets.add( Padding( padding: const EdgeInsets.symmetric(vertical: 2.0), child: Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('$key:', style: textTheme.bodyMedium),
-              Text( '$displayValue${(key != 'Count' && value != 'N/A' && !skipFormatting) ? valueSuffix : ''}', style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold), ),
-            ], ), ) );
-      if (key != stats.keys.last) { statWidgets.add(Divider(height: 1, thickness: 0.5, color: Colors.grey.shade300)); }
-    });
-    return Card( elevation: 2.0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), child: Container( width: 250, padding: const EdgeInsets.all(12.0), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)), const Divider(height: 10, thickness: 1), ...statWidgets, ], ), ), );
-  }
-  Widget _buildDistributionCard(BuildContext context, String title, Map<String, int> distribution) {
-     final textTheme = Theme.of(context).textTheme;
-     const int maxItemsToShow = 5;
-     final itemsToShow = distribution.entries.take(maxItemsToShow).toList();
-     final bool hasMore = distribution.length > maxItemsToShow;
-     final List<Widget> distWidgets = itemsToShow.map((entry) => Padding( padding: const EdgeInsets.symmetric(vertical: 2.0), child: Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Flexible(child: Text('${entry.key}:', style: textTheme.bodyMedium, overflow: TextOverflow.ellipsis)),
-            Text(entry.value.toString(), style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)), ], ), )).toList();
-     if (hasMore) { distWidgets.add(Padding( padding: const EdgeInsets.only(top: 4.0), child: Text('... and ${distribution.length - maxItemsToShow} more', style: textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic)), )); }
-     return Card( elevation: 2.0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), child: Container( width: 250, padding: const EdgeInsets.all(12.0), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)), const Divider(height: 10, thickness: 1), if (distWidgets.isEmpty) const Text('No data available.', style: TextStyle(fontStyle: FontStyle.italic)) else ...distWidgets, ], ), ), );
+  // --- MODIFIED Helper Widgets for Displaying Analysis ---
+
+  // Helper to build RichText for combined value (e.g., "$100 (Sold $120)")
+  InlineSpan _buildCombinedValueSpan(String primaryValue, String? soldValue, TextStyle? soldTextStyle) {
+    if (soldValue == null || soldValue == 'N/A') {
+      return TextSpan(text: primaryValue);
+    }
+    return TextSpan(
+      children: [
+        TextSpan(text: primaryValue),
+        const TextSpan(text: ' ('),
+        TextSpan(text: soldValue, style: soldTextStyle),
+        const TextSpan(text: ')'),
+      ],
+    );
   }
 
-  // --- Helper Widgets for Building Charts ---
+
+  // MODIFIED: _buildStatsCard to accept and display sold stats
+  Widget _buildStatsCard(
+    BuildContext context,
+    String title,
+    NumericStats currentStats,
+    NumericStats? soldStats, // Optional sold stats
+    { String valueSuffix = '', bool skipFormatting = false, required TextStyle soldTextStyle }
+   ) {
+    final textTheme = Theme.of(context).textTheme;
+
+    // Define the order and labels for stats
+    final statsOrder = [
+      {'label': 'Count', 'current': currentStats.formattedCount, 'sold': soldStats?.formattedCount},
+      {'label': 'Average', 'current': currentStats.formattedAverage, 'sold': soldStats?.formattedAverage},
+      {'label': 'Median', 'current': currentStats.formattedMedian, 'sold': soldStats?.formattedMedian},
+      {'label': 'Min', 'current': currentStats.formattedMin, 'sold': soldStats?.formattedMin},
+      {'label': 'Max', 'current': currentStats.formattedMax, 'sold': soldStats?.formattedMax},
+    ];
+
+    final List<Widget> statWidgets = [];
+    for (var i = 0; i < statsOrder.length; i++) {
+      final statInfo = statsOrder[i];
+      final String currentDisplayValue = statInfo['current']!;
+      final String? soldDisplayValue = statInfo['sold']; // Can be null
+
+      // Apply suffix only if needed and value is not N/A
+      final suffix = (statInfo['label'] != 'Count' && currentDisplayValue != 'N/A' && !skipFormatting) ? valueSuffix : '';
+      final soldSuffix = (statInfo['label'] != 'Count' && soldDisplayValue != null && soldDisplayValue != 'N/A' && !skipFormatting) ? valueSuffix : '';
+
+      statWidgets.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3.0), // Slightly more space
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start, // Align top
+            children: [
+              Text('${statInfo['label']}:', style: textTheme.bodyMedium),
+              const SizedBox(width: 8), // Space between label and value
+              Expanded( // Allow value text to wrap if needed
+                child: Text.rich(
+                  _buildCombinedValueSpan(
+                    '$currentDisplayValue$suffix',
+                    soldDisplayValue != null ? '$soldDisplayValue$soldSuffix' : null, // Add suffix to sold value too
+                    soldTextStyle
+                  ),
+                  textAlign: TextAlign.right, // Align value to the right
+                  style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        )
+      );
+      if (i < statsOrder.length - 1) {
+        statWidgets.add(Divider(height: 1, thickness: 0.5, color: Colors.grey.shade300));
+      }
+    }
+
+    return Card(
+      elevation: 2.0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+      child: Container(
+        width: 260, // Slightly wider to accommodate combined text
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+            const Divider(height: 10, thickness: 1),
+            ...statWidgets,
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ADDED: Specific card for PricePerSqft to handle its class type
+  Widget _buildPricePerSqftCard(
+    BuildContext context,
+    String title,
+    PricePerSqftStats currentStats,
+    PricePerSqftStats? soldStats, // Optional sold stats
+    { required TextStyle soldTextStyle }
+   ) {
+    final textTheme = Theme.of(context).textTheme;
+
+    final statsOrder = [
+      {'label': 'Count', 'current': currentStats.formattedCount, 'sold': soldStats?.formattedCount},
+      {'label': 'Average', 'current': currentStats.formattedAverage, 'sold': soldStats?.formattedAverage},
+      {'label': 'Median', 'current': currentStats.formattedMedian, 'sold': soldStats?.formattedMedian},
+      {'label': 'Min', 'current': currentStats.formattedMin, 'sold': soldStats?.formattedMin},
+      {'label': 'Max', 'current': currentStats.formattedMax, 'sold': soldStats?.formattedMax},
+    ];
+
+    final List<Widget> statWidgets = [];
+    for (var i = 0; i < statsOrder.length; i++) {
+      final statInfo = statsOrder[i];
+      final String currentDisplayValue = statInfo['current']!;
+      final String? soldDisplayValue = statInfo['sold'];
+
+      statWidgets.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${statInfo['label']}:', style: textTheme.bodyMedium),
+               const SizedBox(width: 8),
+              Expanded(
+                child: Text.rich(
+                  _buildCombinedValueSpan(
+                    currentDisplayValue, // No suffix needed here
+                    soldDisplayValue,
+                    soldTextStyle
+                  ),
+                  textAlign: TextAlign.right,
+                  style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        )
+      );
+      if (i < statsOrder.length - 1) {
+        statWidgets.add(Divider(height: 1, thickness: 0.5, color: Colors.grey.shade300));
+      }
+    }
+
+    return Card(
+      elevation: 2.0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+      child: Container(
+        width: 260,
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+            const Divider(height: 10, thickness: 1),
+            ...statWidgets,
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  // MODIFIED: _buildDistributionCard to accept and display sold distribution counts
+  Widget _buildDistributionCard(
+    BuildContext context,
+    String title,
+    Map<String, int> currentDistribution,
+    Map<String, int>? soldDistribution, // Optional sold distribution
+    { required TextStyle soldTextStyle }
+   ) {
+     final textTheme = Theme.of(context).textTheme;
+     const int maxItemsToShow = 5;
+
+     // Get top items from current distribution
+     final currentItemsToShow = currentDistribution.entries.take(maxItemsToShow).toList();
+     final bool hasMoreCurrent = currentDistribution.length > maxItemsToShow;
+
+     final List<Widget> distWidgets = [];
+
+     for (final entry in currentItemsToShow) {
+        final String key = entry.key;
+        final String currentCount = NumberFormat.decimalPattern().format(entry.value);
+        final String? soldCount = soldDistribution?[key] != null ? NumberFormat.decimalPattern().format(soldDistribution![key]) : null;
+
+        distWidgets.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Flexible(child: Text('$key:', style: textTheme.bodyMedium, overflow: TextOverflow.ellipsis)),
+                  const SizedBox(width: 8),
+                  Flexible( // Allow value text to wrap
+                    child: Text.rich(
+                      _buildCombinedValueSpan(currentCount, soldCount, soldTextStyle),
+                      textAlign: TextAlign.right,
+                      style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            )
+        );
+     }
+
+
+     if (hasMoreCurrent) {
+        distWidgets.add(Padding(
+            padding: const EdgeInsets.only(top: 4.0),
+            child: Text(
+              '... and ${currentDistribution.length - maxItemsToShow} more categories.',
+              style: textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+              textAlign: TextAlign.center, // Center the 'more' text
+            ),
+        ));
+     }
+
+     return Card(
+        elevation: 2.0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+        child: Container(
+          width: 260,
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              const Divider(height: 10, thickness: 1),
+              if (distWidgets.isEmpty)
+                const Text('No data available.', style: TextStyle(fontStyle: FontStyle.italic))
+              else
+                ...distWidgets,
+            ],
+          ),
+        ),
+      );
+  }
 
   // Builds the Average Price by City Bar Chart
   Widget _buildAvgPriceByCityChart(BuildContext context, Map<String, double> avgPriceData) {
@@ -617,6 +958,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> with SingleTickerProvid
 
   // Helper to build DataTable (unchanged)
   Widget _buildDataTable({ required BuildContext context, required List<Map<String, dynamic>> data, required int sortColumnIndex, required bool sortAscending, required Function(int, bool) onSort, }) {
+    // ... (implementation unchanged)
      final columns = widget.headers.asMap().entries.map((entry) {
         final int index = entry.key; final String header = entry.value;
         return DataColumn( label: Text(header, style: const TextStyle(fontWeight: FontWeight.bold)), onSort: (columnIndex, ascending) => onSort(columnIndex, ascending), tooltip: 'Sort by $header',

@@ -23,7 +23,7 @@ Future<Map<String, dynamic>> processCsvFilesIsolate(Map<String, List<String>> fi
      if (kDebugMode) print("[${DateTime.now()}] ISOLATE (csv_processor): Reading active files...");
     final allActive = _readAndMergeCsvsSync(activePaths);
      if (kDebugMode) print("[${DateTime.now()}] ISOLATE (csv_processor): Reading sold files...");
-    final allSold = _readAndMergeCsvsSync(soldPaths);
+    final allSold = _readAndMergeCsvsSync(soldPaths); // Keep the raw sold data
 
     if (allCancelled.isEmpty) {
        if (kDebugMode) print("[${DateTime.now()}] ISOLATE (csv_processor): No data in Cancelled/Expired files.");
@@ -141,6 +141,7 @@ Future<Map<String, dynamic>> processCsvFilesIsolate(Map<String, List<String>> fi
          'success': true,
          'yesData': <Map<String, dynamic>>[],
          'maybeData': <Map<String, dynamic>>[],
+         'soldData': allSold, // <<< MODIFIED: Return sold data
          'headers': orderedHeaders, // Still return ordered headers
          'fileNameBase': 'property_analysis_results',
        };
@@ -151,6 +152,7 @@ Future<Map<String, dynamic>> processCsvFilesIsolate(Map<String, List<String>> fi
       'success': true,
       'yesData': yesResults,
       'maybeData': maybeResults,
+      'soldData': allSold, // <<< MODIFIED: Return sold data
       'headers': orderedHeaders,
       'fileNameBase': 'property_analysis_results',
     };
@@ -165,7 +167,6 @@ Future<Map<String, dynamic>> processCsvFilesIsolate(Map<String, List<String>> fi
      return {'success': false, 'error': errorMessage};
   }
 }
-
 
 // --- Helper Functions (Private to this file) ---
 

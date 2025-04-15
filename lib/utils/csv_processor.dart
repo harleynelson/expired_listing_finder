@@ -243,6 +243,7 @@ String _normalizeAddress(String street, String city) {
     String normStreet = street.toLowerCase().trim();
     String normCity = city.toLowerCase().trim();
 
+    // Normalize common street types
     normStreet = normStreet.replaceAll(RegExp(r'\blane\.?\b', caseSensitive: false), 'lane');
     normStreet = normStreet.replaceAll(RegExp(r'\bcourt\.?\b|\bct\.?\b', caseSensitive: false), 'court');
     normStreet = normStreet.replaceAll(RegExp(r'\broad\.?\b', caseSensitive: false), 'road');
@@ -256,15 +257,38 @@ String _normalizeAddress(String street, String city) {
     normStreet = normStreet.replaceAll(RegExp(r'\bterrace\.?\b|\bter\.?\b', caseSensitive: false), 'terrace');
     normStreet = normStreet.replaceAll(RegExp(r'\btrail\.?\b|\btrl\.?\b', caseSensitive: false), 'trail');
 
+    // Normalize unit/apt identifiers
     normStreet = normStreet.replaceAllMapped(RegExp(r'\bunit\s?(\d+)\b', caseSensitive: false), (match) => 'unit ${match.group(1)}');
     normStreet = normStreet.replaceAll(RegExp(r'#\s?(\d+)\b', caseSensitive: false), r'unit $1');
     normStreet = normStreet.replaceAllMapped(RegExp(r'\bapt\s?(\d+)\b', caseSensitive: false), (match) => 'apt ${match.group(1)}');
 
+    // **NEW**: Normalize cardinal directions (preceded by space)
+    normStreet = normStreet.replaceAll(RegExp(r'\s(north|n\.?)\b', caseSensitive: false), ' n');
+    normStreet = normStreet.replaceAll(RegExp(r'\s(east|e\.?)\b', caseSensitive: false), ' e');
+    normStreet = normStreet.replaceAll(RegExp(r'\s(south|s\.?)\b', caseSensitive: false), ' s');
+    normStreet = normStreet.replaceAll(RegExp(r'\s(west|w\.?)\b', caseSensitive: false), ' w');
+
+    // **NEW**: Remove special characters except letters, numbers, and spaces
+    // We keep spaces for separation and potentially the separator later
+    normStreet = normStreet.replaceAll(RegExp(r'[^\w\s]+'), ''); // \w matches letters, numbers, underscore. \s matches whitespace.
+    normCity = normCity.replaceAll(RegExp(r'[^\w\s]+'), '');
+
+    // Collapse multiple spaces and trim again
     normStreet = normStreet.replaceAll(RegExp(r'\s+'), ' ').trim();
     normCity = normCity.replaceAll(RegExp(r'\s+'), ' ').trim();
 
+    // Final format: ensure single letter directions are uppercase if needed
+    normStreet = normStreet.replaceAll(RegExp(r'\s(n)\b'), ' N');
+    normStreet = normStreet.replaceAll(RegExp(r'\s(e)\b'), ' E');
+    normStreet = normStreet.replaceAll(RegExp(r'\s(s)\b'), ' S');
+    normStreet = normStreet.replaceAll(RegExp(r'\s(w)\b'), ' W');
+
+
+    // Return combined, ensuring city is not empty
+    if (normCity.isEmpty) return '';
     return '$normStreet|$normCity';
 }
+
 
 // Collects unique headers from a list of data maps
 void _collectHeaders(List<Map<String, dynamic>> data, Set<String> allHeaders) {
